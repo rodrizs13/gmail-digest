@@ -1,0 +1,5 @@
+[
+  {"id":"demo-1","sender":"Equipe Acadêmica <equipe@example.com>","subject":"Entrega do projeto","text":"Seu projeto está na etapa final. O prazo de entrega é sexta-feira, às 23h59. Confirme o link do repositório no portal.","promotion":false},
+  {"id":"demo-2","sender":"Suporte <suporte@example.com>","subject":"Manutenção de rede","text":"A manutenção da rede será realizada amanhã às 18h. Salve seus arquivos antes do início.","promotion":false},
+  {"id":"demo-3","sender":"Loja <loja@example.com>","subject":"Ofertas da semana","text":"Confira nossas ofertas.","promotion":true}
+]
