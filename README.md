@@ -1,4 +1,4 @@
-# Gmail Digest 📬
+# Gmail Digest 
 
 Automação em Python para transformar mensagens do Gmail em um relatório curto, destacando trechos com possíveis prazos e ações. Projeto de portfólio com OAuth 2.0, integração REST, tratamento MIME, testes e GitHub Actions.
 
