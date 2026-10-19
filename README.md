@@ -1,204 +1,227 @@
-# Gmail Digest 
+# Gmail Digest
 
-Automação em Python para transformar mensagens do Gmail em um relatório curto, destacando trechos com possíveis prazos e ações. Projeto de portfólio com OAuth 2.0, integração REST, tratamento MIME, testes e GitHub Actions.
+Automação em Python que organiza mensagens do Gmail e gera resumos com possíveis prazos, pedidos de resposta e outros assuntos importantes. Inclui histórico em SQLite, autorização OAuth 2.0 e envio de relatórios por e-mail.
 
-## O que faz
+O resumo diário reúne as mensagens selecionadas de uma data em um e-mail HTML com assunto, remetente, horário, trecho relevante e link para o original. O layout usa cores discretas e texto sem emojis.
 
-- Na primeira execução, busca as últimas 24 horas; depois retoma o histórico com cinco minutos de sobreposição.
-- Salva IDs, remetentes, assuntos, datas e execuções em SQLite, evitando reprocessamento.
-- Extrai texto simples ou HTML de mensagens MIME.
-- Seleciona até duas frases relevantes por mensagem e agrupa promoções.
-- Gera Markdown com remetente, assunto e link para o Gmail.
-- Executa uma demonstração sem conta, dependências externas ou dados reais.
-- Agenda execuções em repositórios privados pelo GitHub Actions.
+## Funcionalidades
 
-**É um resumo extrativo por regras, não uma IA generativa.** Não entende todos os contextos nem garante identificar urgências. Anexos não são resumidos. O comando `digest.py` não envia, apaga nem marca mensagens como lidas. O envio opcional fica no comando separado `send_digest.py`.
+- Leitura de mensagens pela Gmail API, com paginação e limite configurável.
+- Extração de texto de mensagens simples, HTML e partes MIME aninhadas.
+- Resumo extrativo: seleciona até duas frases do texto original.
+- Seleção por marcador **Importante** do Gmail, remetentes prioritários ou palavras relacionadas a prazos e ações.
+- Exclusão de promoções nos resumos enviados.
+- Histórico local em SQLite para evitar reprocessamento.
+- Relatório Markdown, envio incremental em texto e resumo diário em HTML.
+- Prévia antes do envio e demonstração com mensagens fictícias.
+- Testes automatizados e workflow de integração contínua no GitHub Actions.
 
-## Teste agora — sem conectar Gmail
+A seleção usa regras e pode incluir ou ignorar mensagens incorretamente. Anexos não são analisados. Os comandos não apagam mensagens nem as marcam como lidas.
 
-Requer Python 3.10 ou superior. Abra um terminal dentro desta pasta:
+## Requisitos
 
-```bash
-python digest.py --demo
-python -m unittest discover -s tests -v
-```
+- Python 3.10 ou superior.
+- Uma conta Google e um projeto com a Gmail API ativada para usar mensagens reais.
+- Armazenamento persistente para manter os bancos entre execuções.
 
-Abra `output/resumo.md`. Os exemplos usam endereços fictícios. Veja também [exemplo-resumo.md](exemplo-resumo.md).
-
-## Ler seu Gmail de verdade
-
-A conexão do Gmail no ChatGPT não fornece credenciais para este código. Autorize o projeto separadamente no seu computador:
-
-1. Crie um projeto no [Google Cloud](https://console.cloud.google.com/) e ative a Gmail API.
-2. Configure a tela de consentimento OAuth no Google Auth Platform. Durante testes, adicione sua conta como usuário de teste.
-3. Crie um cliente OAuth do tipo **Aplicativo para computador**. Baixe o JSON e salve nesta pasta com o nome `credentials.json`.
-4. No terminal, instale e autorize:
+## Instalação
 
 ```bash
+git clone https://github.com/rodrizs13/gmail-digest.git
+cd gmail-digest
 python -m venv .venv
 ```
 
-No Windows (CMD):
+Ative o ambiente conforme seu terminal:
 
-```bat
-.venv\Scripts\activate
-```
-
-No Linux/macOS:
-
-```bash
-source .venv/bin/activate
-```
-
-Depois:
+| Terminal | Comando |
+| --- | --- |
+| Windows — Git Bash | `source .venv/Scripts/activate` |
+| Windows — CMD | `.venv\Scripts\activate` |
+| Linux/macOS | `source .venv/bin/activate` |
 
 ```bash
 python -m pip install -r requirements.txt
+```
+
+O pacote `tzdata` fornece os dados de fuso horário usados pelo resumo diário, inclusive no Windows.
+
+## Demonstração sem conectar uma conta
+
+```bash
+python digest.py --demo
+```
+
+Abra `output/resumo.md`. A primeira execução processa três mensagens fictícias; as seguintes não repetem os mesmos registros. O relatório é substituído em cada execução.
+
+Para visualizar o layout diário com dados fictícios:
+
+```bash
+python daily_digest.py --to destinatario@example.com --demo --preview
+```
+
+Abra `output/previa-diaria.html`. A demonstração não envia e-mails.
+
+## Conectar o Gmail
+
+1. Crie ou selecione um projeto no [Google Cloud Console](https://console.cloud.google.com/).
+2. Ative a **Gmail API**.
+3. Configure o aplicativo OAuth no **Google Auth Platform**. Em modo de teste, adicione a conta que será conectada aos usuários de teste.
+4. Crie um cliente OAuth do tipo **Aplicativo para computador**.
+5. Baixe o JSON, renomeie para `credentials.json` e coloque na raiz do projeto.
+6. Autorize a conta pelo navegador:
+
+```bash
 python authorize.py
-python digest.py
 ```
 
-O navegador abre para você escolher sua conta e conceder acesso somente de leitura. `token.json` fica no computador. Nunca publique esse arquivo ou `credentials.json`. O `.gitignore` já os exclui, mas confira os arquivos antes de cada envio.
-
-Para ampliar a janela ou o limite:
-
-```bash
-python digest.py --hours 48 --max-messages 500
-```
-
-## Automação diária
-
-O arquivo `.github/workflows/daily.yml` usa 11h17 UTC, equivalente a 08h17 em Brasília. O GitHub pode atrasar execuções: não é um serviço de horário garantido. O cursor persistente retoma a busca após falhas; mantenha o mesmo banco entre execuções.
-
-Para usar com mensagens reais:
-
-1. Suba uma cópia para um **repositório privado**.
-2. Vá a **Settings → Secrets and variables → Actions → New repository secret**.
-3. Nome: `GMAIL_TOKEN_JSON`. Valor: conteúdo completo de seu `token.json`.
-4. Configure um runner próprio persistente com os labels `self-hosted` e `gmail-digest`. Crie a variável de Actions `GMAIL_HISTORY_DB` com um caminho absoluto fora do checkout, por exemplo `/srv/gmail-digest/history.sqlite3`. O workflow agora exige esse runner, pois runners hospedados descartam o banco entre execuções. Sem ele, a tarefa ficará aguardando.
-5. Ative o Actions e execute **Resumo diário privado → Run workflow** para testar.
-6. Baixe o arquivo `resumo-gmail` na seção **Artifacts** da execução. Ele permanece por um dia. Pessoas com acesso ao repositório poderão acessar o relatório.
-
-O workflow diário bloqueia execução em repositórios públicos. Para o portfólio público, publique o código e a demonstração fictícia: o CI não usa credenciais. O workflow atual gera somente o arquivo; não executa o envio opcional por e-mail.
-
-Apps OAuth externos em modo de teste podem ter refresh tokens com validade de sete dias. Nesse caso, reautorize e atualize o secret. Uso em produção com escopos Gmail pode exigir verificação do Google, conforme o público e o tipo de aplicação.
-
-## Subir no GitHub
-
-Crie um repositório vazio no GitHub e, dentro desta pasta, execute:
-
-```bash
-git init
-git add .
-git status
-git commit -m "Adiciona Gmail Digest com demo e automacao"
-git branch -M main
-git remote add origin https://github.com/SEU-USUARIO/gmail-digest.git
-git push -u origin main
-```
-
-Troque `SEU-USUARIO` pelo seu usuário. Se já existir um repositório local, não repita `git init` nem a criação do remote.
-
-## Estrutura
-
-| Arquivo | Responsabilidade |
-| --- | --- |
-| `digest.py` | Busca, extração, resumo e relatório |
-| `authorize.py` | Autorização local OAuth |
-| `demo.json` | Mensagens fictícias |
-| `tests/test_digest.py` | Testes de MIME e relatório |
-| `.github/workflows/ci.yml` | Testes e demonstração pública |
-| `.github/workflows/daily.yml` | Agendamento privado |
-
-## Decisões e próximos passos
-
-O resumo por regras mantém o projeto gratuito e simples de explicar. Paginação evita depender apenas da primeira página; o relatório informa quando o limite foi atingido. As chamadas de API usam tentativas adicionais para falhas transitórias. Os testes cobrem MIME aninhado, HTML, seleção de frases, promoções e limites.
-
-Possíveis evoluções: painel web, classificação melhor de newsletters, envio opcional com autorização explícita e dependências travadas com hashes. As bibliotecas estão limitadas por versão principal, mas não há lockfile reproduzível.
-
-## Referências
-
-- [Gmail API: quickstart Python](https://developers.google.com/workspace/gmail/api/quickstart/python)
-- [OAuth 2.0: expiração de refresh tokens](https://developers.google.com/identity/protocols/oauth2#expiration)
-- [GitHub Actions: eventos e agendamento](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)
-- [GitHub Actions: secrets](https://docs.github.com/en/actions/how-tos/administering-github-actions/sharing-workflows-secrets-and-runners-with-your-organization)
-
-Licença: MIT. Este projeto é independente do Google.
-
-## Histórico SQLite
-
-```bash
-python digest.py --demo
-python digest.py --demo
-python digest.py --database data/gmail.sqlite3
-```
-
-A primeira demonstração registra 3 mensagens; a segunda registra 0. Demonstração e Gmail usam bancos separados por padrão. O relatório mostra somente mensagens novas e é substituído em cada execução. `--hours` define a janela inicial; depois o cursor governa a busca. Para consultar outro período sem afetar o histórico principal, use outro banco e outro arquivo de saída.
-
-`messages` contém ID, remetente, assunto, data recebida (`internalDate` do Gmail em milissegundos) e data de processamento. `runs` registra início, fim, status, quantidade, corte de busca e cursor. Falhas guardam apenas o tipo de erro, sem conteúdo privado.
-
-O cursor só avança após busca completa e gravação do relatório. Falhas ou limite atingido preservam a janela para nova tentativa; aumente `--max-messages` quando necessário. O banco serializa execuções concorrentes. Não há transação única entre arquivo e SQLite: se o processo cair após gravar o relatório e antes do commit, a próxima execução poderá gerar novamente o mesmo conteúdo.
-
-Use **um banco por conta**, em disco persistente, e faça backup. Não compartilhe um banco entre demo e Gmail. Os arquivos SQLite e `data/` são ignorados pelo Git. Este estágio é local e para uma conta por banco; ainda não implementa isolamento de clientes de um serviço comercial ; o envio opcional está documentado abaixo.
-
-## Enviar por e-mail (opcional)
-
-O remetente será a conta autorizada em `token.json`. Para habilitar a permissão de envio, autorize novamente:
+Esse comando concede acesso de leitura e cria `token.json`. Para permitir também o envio dos resumos, execute:
 
 ```bash
 python authorize.py --send-email
 ```
 
-Confira primeiro uma prévia (não envia e não altera o histórico):
+O remetente dos resumos será a conta autorizada. Uma nova autorização substitui o `token.json` existente; preserve separadamente os tokens das contas que deseja continuar usando. A versão atual utiliza uma conta autorizada por vez.
+
+## Resumo diário em HTML
+
+### Conferir a prévia
 
 ```bash
-python send_digest.py --to destinatario@example.com --preview
-```
-
-Abra `output/previa-email.txt`. Para enviar:
-
-```bash
-python send_digest.py --to destinatario@example.com
-```
-
-Para incluir um remetente prioritário, acrescente `--priority-sender cliente@example.com` (pode repetir). A seleção considera o marcador IMPORTANT do Gmail, remetentes prioritários e palavras-chave de prazo/ação no assunto ou corpo. Promoções e resumos do próprio projeto são excluídos. É uma heurística: pode ignorar mensagens relevantes ou selecionar outras sem urgência. Não resume anexos. Os links só abrem para quem tiver acesso à caixa original.
-
-Sem mensagens novas selecionadas, nenhum e-mail é enviado. O histórico de entrega é independente do relatório local: a primeira execução de envio pode incluir mensagens já vistas com `digest.py`. O banco padrão é separado por conta de origem e destinatário e fica em `data/`. Mudanças nos filtros não reprocessam mensagens antigas; use outro banco para um novo levantamento deliberado. Não altere o banco em uso para trocar o destinatário.
-
-A caixa de saída SQLite salva o resumo e o cursor juntos antes do envio. Um envio sem confirmação fica bloqueado, inclusive após queda do processo. Confira a pasta Enviados, o destinatário e o assunto antes de resolver:
-
-```bash
-# Se confirmou que foi enviado:
-python send_digest.py --to destinatario@example.com --resolve-uncertain sent
-# Somente se conferiu e deseja reenviar (pode duplicar):
-python send_digest.py --to destinatario@example.com --resolve-uncertain retry
-```
-
-Os comandos de resolução também continuam a busca e o envio de novas mensagens. O envio usa a Gmail API, sem repetição automática da chamada `send`. O conteúdo pendente fica no SQLite até a confirmação; proteja esse arquivo, além dos tokens e relatórios. O comando é manual nesta versão; não foi adicionado ao agendamento diário. Exige as mesmas dependências de `requirements.txt`.
-
-Referência: https://developers.google.com/workspace/gmail/api/guides/sending
-
-## Resumo diário completo em HTML, sem emojis
-
-Atualize as dependências para incluir os fusos horários no Windows:
-
-```bash
-python -m pip install -r requirements.txt
 python daily_digest.py --to destinatario@example.com --preview
 ```
 
-Abra `output/previa-diaria.html` no navegador. O relatório mostra assunto, remetente, horário local, resumo extrativo e link para o Gmail. O envio inclui versões HTML e texto simples.
+Arquivos gerados:
+
+- `output/previa-diaria.html`: prévia visual para abrir no navegador.
+- `output/previa-diaria.txt`: versão em texto com o destinatário.
+
+A prévia não envia e-mails nem altera o histórico de entrega.
+
+### Enviar o resumo
 
 ```bash
 python daily_digest.py --to destinatario@example.com
-# Um dia anterior completo:
+```
+
+O período vai da meia-noite até o momento da execução em **America/Sao_Paulo**. Mensagens já processadas pelos outros comandos continuam fazendo parte do relatório da data.
+
+Para consultar um dia anterior completo:
+
+```bash
 python daily_digest.py --to destinatario@example.com --date 2026-10-18
 ```
 
-O comando usa o dia civil em `America/Sao_Paulo`, da meia-noite até o momento da execução (ou até a próxima meia-noite para dias passados). Ele busca todas as mensagens selecionadas da data, independentemente do histórico incremental de outros comandos. Mensagens com horário exatamente na meia-noite inicial são incluídas; o limite final é exclusivo. Se houver paginação além do limite de 500 mensagens, ele não envia um relatório incompleto; aumente `--max-messages`.
+Para priorizar remetentes ou ampliar o limite:
 
-A seleção de importância continua sendo por regras; promoções são excluídas. `--priority-sender` pode ser repetido. O texto exibido é escapado e os emojis são removidos. Um dia sem mensagens selecionadas gera um relatório informando essa ausência. O comando não agenda envios futuros.
+```bash
+python daily_digest.py --to destinatario@example.com --priority-sender cliente@example.com --max-messages 1000
+```
 
-A entrega usa um banco próprio `data/diario-*.sqlite3`, vinculado à conta e ao destinatário. O mesmo conjunto de mensagens da mesma data não é reenviado. Se chegarem novas mensagens importantes, a execução seguinte envia uma versão atualizada com o dia inteiro. Falhas sem confirmação bloqueiam nova tentativa automática. Para resolver após conferir Enviados, use `--resolve-uncertain sent` ou `--resolve-uncertain retry` (este último pode duplicar). Não apague o banco para contornar o bloqueio.
+`--priority-sender` pode ser repetido. Promoções continuam excluídas. Se o limite impedir a leitura do período completo, o programa interrompe a operação em vez de enviar um relatório parcial.
 
-O pacote `atualizacao-resumo-diario.zip` contém arquivos diretamente na raiz. Copie seu conteúdo para a pasta atual onde estão `authorize.py` e `send_digest.py`, substituindo os arquivos de código. Não contém credenciais, tokens ou bancos; preserve os seus.
+O envio inclui versões HTML e texto simples. Um período sem mensagens selecionadas gera um relatório informando essa ausência. O mesmo conjunto de mensagens da mesma data não é reenviado; se chegarem novas mensagens importantes, a próxima execução poderá enviar uma versão atualizada com o dia inteiro. Os links exigem acesso à caixa de origem.
+
+## Outros modos de uso
+
+| Comando | Comportamento |
+| --- | --- |
+| `python digest.py` | Gera `output/resumo.md` com mensagens ainda não processadas. |
+| `python send_digest.py --to destinatario@example.com --preview` | Gera uma prévia em texto das mensagens importantes da janela consultada, sem enviar. |
+| `python send_digest.py --to destinatario@example.com` | Envia somente mensagens importantes ainda não processadas pelo histórico de entrega incremental. |
+| `python daily_digest.py --to destinatario@example.com` | Envia todas as mensagens importantes selecionadas da data, independentemente dos históricos incrementais. |
+
+No relatório local e no envio incremental, `--hours` define a janela inicial, de 24 horas por padrão. Depois, o cursor persistente governa a busca, com cinco minutos de sobreposição. A prévia de `send_digest.py` consulta a janela indicada, sem aplicar o histórico de entrega.
+
+## Histórico e recuperação de falhas
+
+Os bancos padrão ficam em `data/`, separados por finalidade:
+
+| Banco | Uso |
+| --- | --- |
+| `demo.sqlite3` | Demonstração do relatório local. |
+| `gmail.sqlite3` | Mensagens e execuções do relatório local. |
+| `envio-*.sqlite3` | Histórico e caixa de saída do envio incremental. |
+| `diario-*.sqlite3` | Relatórios diários e caixa de saída. |
+
+Todos os comandos reais aceitam `--database` para indicar outro caminho. Use um banco por conta; os bancos de envio também são vinculados ao destinatário. Mantenha os bancos em disco persistente e faça backup.
+
+A caixa de saída salva o relatório antes de chamar o Gmail. Se o envio ficar sem confirmação, o programa bloqueia a repetição automática. Confira a pasta **Enviados** antes de resolver:
+
+```bash
+# Quando confirmou que o resumo já foi enviado:
+python daily_digest.py --to destinatario@example.com --resolve-uncertain sent
+
+# Para tentar novamente após conferir; pode causar duplicação:
+python daily_digest.py --to destinatario@example.com --resolve-uncertain retry
+```
+
+As mesmas opções estão disponíveis em `send_digest.py`. Resolver um envio também continua o processamento normal de mensagens. Não apague o banco para contornar um bloqueio.
+
+## Automação
+
+Os comandos de envio são manuais nesta versão. O nome “diário” define o período do relatório; não cria um agendamento.
+
+O workflow `.github/workflows/daily.yml` do repositório agenda **somente a geração do Markdown**, às 11h17 UTC, equivalentes a 08h17 em Brasília. Ele exige repositório privado e o secret `GMAIL_TOKEN_JSON`. Não executa os comandos de envio por e-mail.
+
+**Limitação atual:** esse workflow usa um runner hospedado sem persistência do SQLite entre execuções. Para preservar o histórico em uma automação real, adapte a execução para armazenamento durável ou um runner próprio. Execuções agendadas também podem sofrer atrasos.
+
+## Privacidade
+
+Publique somente código, documentação e exemplos fictícios. Mantenha fora do Git:
+
+```gitignore
+credentials*.json
+token*.json
+.env
+output/
+data/
+*.sqlite3
+*.sqlite3-*
+__pycache__/
+.venv/
+```
+
+Relatórios e bancos podem conter dados pessoais e conteúdo de mensagens pendentes. Não os compartilhe como exemplos públicos. Antes de cada commit, confira os arquivos preparados com `git diff --cached --name-only`. O `.gitignore` não remove arquivos que já estejam rastreados.
+
+## Testes
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Os testes publicados verificam extração MIME, HTML, seleção de frases, promoções, limites do período em Brasília, geração de e-mail multipart e controle de repetição dos relatórios diários. As chamadas de envio são simuladas nos testes.
+
+## Estrutura
+
+```text
+gmail-digest/
+├── authorize.py          # Autorização OAuth local
+├── digest.py             # Leitura, extração e relatório Markdown
+├── history.py            # Histórico SQLite do relatório local
+├── send_digest.py        # Seleção e envio incremental por e-mail
+├── daily_digest.py       # Relatório diário completo em HTML
+├── demo.json             # Mensagens fictícias
+├── requirements.txt      # Dependências
+├── tests/                # Testes automatizados
+└── .github/workflows/    # CI e agendamento do relatório local
+```
+
+## Próximas evoluções
+
+- Configuração de filtros e remetentes por perfil.
+- Painel para consultar relatórios e possíveis pendências.
+- Agendamento de entregas com armazenamento persistente.
+- Gestão de várias contas com isolamento dos dados de cada cliente.
+- Instalação reproduzível com dependências travadas.
+
+## Referências
+
+- [Gmail API: início rápido com Python](https://developers.google.com/workspace/gmail/api/quickstart/python)
+- [Gmail API: envio de mensagens](https://developers.google.com/workspace/gmail/api/guides/sending)
+- [OAuth 2.0: expiração de tokens](https://developers.google.com/identity/protocols/oauth2#expiration)
+- [GitHub Actions: eventos e agendamento](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)
+
+## Licença
+
+[MIT](LICENSE). Projeto independente, sem vínculo oficial com o Google.
