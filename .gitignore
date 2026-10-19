@@ -5,3 +5,12 @@ credentials*.json
 token*.json
 .env
 output/
+
+output/
+data/
+credentials*.json
+token*.json
+.env
+*.sqlite3
+*.sqlite3-*
+__pycache__/

@@ -7,6 +7,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from history import History
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
@@ -46,23 +47,34 @@ def normalize(message):
     return {"id": message["id"], "sender": headers.get("from", "Desconhecido"),
             "subject": headers.get("subject", "Sem assunto"),
             "text": plain_text(payload) or html.unescape(message.get("snippet", "")),
+            "received_at": message.get("internalDate"),
+            "important": "IMPORTANT" in message.get("labelIds", []),
             "promotion": "CATEGORY_PROMOTIONS" in message.get("labelIds", [])}
 
 
-def fetch_messages(hours, maximum):
+def gmail_service(send=False):
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
     raw = os.environ.get("GMAIL_TOKEN_JSON")
     info = json.loads(raw) if raw else json.loads(Path("token.json").read_text())
-    creds = Credentials.from_authorized_user_info(info, SCOPES)
+    required = SCOPES + (["https://www.googleapis.com/auth/gmail.send"] if send else [])
+    if send and not set(required).issubset(set(info.get("scopes", []))):
+        raise ValueError("Autorize envio: python authorize.py --send-email")
+    creds = Credentials.from_authorized_user_info(info, required)
     if not creds.valid:
         if not creds.refresh_token:
             raise RuntimeError("Execute python authorize.py novamente.")
         creds.refresh(Request())
-    service = build("gmail", "v1", credentials=creds, cache_discovery=False)
-    cutoff = int((datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp())
-    query = f"after:{cutoff} -in:spam -in:trash -in:sent -in:drafts"
+    return build("gmail", "v1", credentials=creds, cache_discovery=False)
+
+
+def fetch_messages(hours, maximum, since=None, service=None, until=None):
+    service = service or gmail_service()
+    cutoff = since if since is not None else int((datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp())
+    query = f"after:{cutoff} -in:spam -in:trash -in:sent -in:drafts -subject:\"[Gmail Digest]\""
+    if until is not None:
+        query += f" before:{until}"
     messages, page = [], None
     while len(messages) < maximum:
         result = service.users().messages().list(userId="me", q=query,
@@ -101,24 +113,59 @@ def render(messages, hours, truncated=False):
     return "\n".join(lines)
 
 
+def run_digest(demo=False, hours=24, maximum=200, output="output/resumo.md", database=None):
+    now = datetime.now(timezone.utc)
+    started = now.isoformat()
+    checkpoint = int(now.timestamp())
+    cutoff = checkpoint - hours * 3600
+    history = History(database or ("data/demo.sqlite3" if demo else "data/gmail.sqlite3"))
+    run_id = None
+    try:
+        run_id = history.start(started, cutoff)
+        previous = history.checkpoint()
+        if previous is not None:
+            cutoff = previous - 300
+            history.db.execute('UPDATE runs SET cutoff=? WHERE id=?', (cutoff, run_id))
+        if demo:
+            messages = json.loads((Path(__file__).parent / "demo.json").read_text(encoding="utf-8"))
+            truncated = False
+        else:
+            messages, truncated = fetch_messages(hours, maximum, since=cutoff)
+        fresh = history.unseen(messages)
+        if truncated:
+            raise RuntimeError("Limite atingido. Aumente --max-messages; histórico não avançado.")
+        report = render(fresh, hours).replace(f"Janela: últimas {hours} horas.",
+            f"Busca desde: {datetime.fromtimestamp(cutoff, timezone.utc).isoformat()}. Apenas mensagens ainda não processadas.")
+        target = Path(output)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(target.name + ".tmp")
+        temporary.write_text(report, encoding="utf-8")
+        temporary.replace(target)
+        history.finish(run_id, fresh, datetime.now(timezone.utc).isoformat(), checkpoint, False)
+        return len(fresh)
+    except Exception as error:
+        if run_id is not None and history.db.in_transaction:
+            history.fail((started, cutoff), datetime.now(timezone.utc).isoformat(), error)
+        raise
+    finally:
+        history.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--hours", type=int, default=24)
     parser.add_argument("--max-messages", type=int, default=200)
     parser.add_argument("--output", default="output/resumo.md")
+    parser.add_argument("--database", help="Banco persistente exclusivo desta conta Gmail")
     args = parser.parse_args()
     if args.hours < 1 or args.max_messages < 1:
         parser.error("Os limites devem ser maiores que zero.")
-    if args.demo:
-        messages = json.loads((Path(__file__).parent / "demo.json").read_text(encoding="utf-8"))
-        truncated = False
-    else:
-        messages, truncated = fetch_messages(args.hours, args.max_messages)
-    output = Path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(render(messages, args.hours, truncated), encoding="utf-8")
-    print(f"Resumo gerado: {output}. Mensagens processadas: {len(messages)}.")
+    try:
+        count = run_digest(args.demo, args.hours, args.max_messages, args.output, args.database)
+    except Exception as error:
+        parser.exit(1, f"Falha ({type(error).__name__}). Verifique conexão/autorização e aumente --max-messages se necessário. Histórico não avançado.\n")
+    print(f"Resumo gerado: {args.output}. Novas mensagens: {count}.")
 
 
 if __name__ == "__main__":
