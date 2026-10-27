@@ -1,10 +1,14 @@
 # Gmail Digest
 
-Automação em Python que organiza mensagens do Gmail e gera resumos com possíveis prazos, pedidos de resposta e outros assuntos importantes. Inclui histórico em SQLite, autorização OAuth 2.0 e envio de relatórios por e-mail.
+Automação em Python que organiza mensagens do Gmail e gera resumos com possíveis prazos, pedidos de resposta e outros assuntos importantes. Inclui painel web privado com Flask, histórico em SQLite, autorização OAuth 2.0 e envio de relatórios por e-mail.
 
 O resumo diário reúne as mensagens selecionadas de uma data em um e-mail HTML com assunto, remetente, horário, trecho relevante e link para o original. O layout usa cores discretas e texto sem emojis.
 
 ## Funcionalidades
+
+- Painel web com login por senha e consulta da conta Gmail autorizada.
+- Filtros por data de Brasília, busca por conteúdo e seleção de importantes.
+- Contadores e links para abrir as mensagens originais no Gmail.
 
 - Leitura de mensagens pela Gmail API, com paginação e limite configurável.
 - Extração de texto de mensagens simples, HTML e partes MIME aninhadas.
@@ -210,7 +214,7 @@ gmail-digest/
 ## Próximas evoluções
 
 - Configuração de filtros e remetentes por perfil.
-- Painel para consultar relatórios e possíveis pendências.
+- Histórico persistente de resumos no painel web.
 - Agendamento de entregas com armazenamento persistente.
 - Gestão de várias contas com isolamento dos dados de cada cliente.
 - Instalação reproduzível com dependências travadas.
@@ -225,3 +229,93 @@ gmail-digest/
 ## Licença
 
 [MIT](LICENSE). Projeto independente, sem vínculo oficial com o Google.
+
+## Painel web
+
+O painel consulta uma conta autorizada em modo de leitura. A cada atualização,
+busca os e-mails da data escolhida, mostra resumos extraídos das mensagens e
+permite pesquisar por assunto, remetente ou conteúdo. O filtro de importantes
+usa as regras do projeto. Os contadores representam as mensagens carregadas.
+
+O painel não envia e-mails e não utiliza os bancos de histórico dos comandos
+anteriores. Não possui cadastro de usuários nem conexão de várias contas.
+A senha protege o acesso à conta configurada no servidor.
+
+### Iniciar no Windows
+
+Abra um terminal na pasta que contém `web.py` e `requirements.txt`.
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+Para mensagens reais, coloque `credentials.json` nessa mesma pasta e execute:
+
+```powershell
+python authorize.py
+```
+
+Autorize sua conta no navegador. O comando cria `token.json`. Quem já possui
+um token válido pode reutilizá-lo. Para usar os comandos de envio do projeto,
+autorize com `python authorize.py --send-email`.
+
+Inicie o painel com este comando, compatível com PowerShell e Git Bash:
+
+```powershell
+python -c "import os; os.environ['DASHBOARD_PASSWORD']='teste123'; os.environ['COOKIE_SECURE']='0'; from web import app; app.run(host='127.0.0.1', port=5001)"
+```
+
+Abra **http://127.0.0.1:5001** e entre com `teste123`. Essa senha é apenas um
+exemplo para teste local. Deixe o terminal aberto; `Ctrl+C` encerra o servidor.
+O servidor de desenvolvimento é destinado ao teste local.
+
+### Problemas comuns
+
+| Mensagem | Como resolver |
+| --- | --- |
+| `requirements.txt` ou `web.py` não encontrado | Entre na pasta que contém esses arquivos antes de executar. |
+| `No module named flask` | Execute `python -m pip install -r requirements.txt` com o mesmo Python usado para iniciar. |
+| `credentials.json` não encontrado | Coloque o JSON OAuth original ao lado de `authorize.py` e execute nessa pasta. |
+| `Configure DASHBOARD_PASSWORD` | Pare o servidor e inicie com o comando completo acima. |
+| Login retorna à tela inicial | No teste HTTP local, use `COOKIE_SECURE=0`. |
+| Não foi possível consultar o Gmail | Confira a conexão e a autorização; se necessário, execute `python authorize.py` novamente. |
+
+`credentials.json` e `token.json` são arquivos diferentes. Não renomeie um
+para substituir o outro. Avisos de atualização do pip não são erros de instalação.
+
+### Publicação
+
+O projeto inclui `render.yaml` com configuração para hospedagem Python e
+inicialização por Gunicorn. A publicação depende de configurar o serviço e
+suas variáveis privadas; executar localmente ou enviar ao GitHub não publica
+o painel na internet.
+
+| Variável | Finalidade |
+| --- | --- |
+| `DASHBOARD_PASSWORD` | Senha longa e única para entrar no painel. |
+| `SECRET_KEY` | Chave de sessão estável, compartilhada pelos processos do servidor. |
+| `GMAIL_TOKEN_JSON` | Conteúdo do token autorizado, definido somente no ambiente privado da hospedagem. |
+| `COOKIE_SECURE` | Use `1` em produção com HTTPS e `0` somente no teste HTTP local. |
+
+Confira as condições e o preço da hospedagem antes de contratar.
+Não envie credenciais, tokens, relatórios ou bancos ao GitHub.
+
+### Limitações
+
+- Até 200 mensagens por consulta; o painel avisa quando houver mais resultados.
+- Resumos extrativos e regras de seleção podem deixar passar informações.
+- Sem análise de anexos, cache ou atualização automática em segundo plano.
+- A autorização Google pode precisar ser renovada quando revogada ou inválida.
+- O painel ainda não inclui limitação de tentativas de login nem gestão de usuários;
+  essas proteções precisam ser consideradas antes de disponibilizar acesso amplo.
+
+### Arquivos do painel
+
+```text
+web.py                  # Rotas, login e consulta
+static/panel.css        # Layout responsivo
+templates/login.html    # Tela de entrada
+templates/dashboard.html # Painel de mensagens
+tests/test_web.py       # Testes com consultas simuladas
+render.yaml             # Configuração de hospedagem
+```
